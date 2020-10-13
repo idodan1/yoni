@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import numpy as np
+import traceback
 from os import path
 
 
@@ -36,6 +37,7 @@ def create_excel_outliers(df, treatment_name, dir_name):
     df.index = ['mean', 'std'] + index
 
     df = df.style.apply(highlight_outliers)
+    treatment_name = treatment_name.replace('/', '.')
     df.to_excel(dir_name + "/" + treatment_name + '_outliers data frame.xlsx', engine='openpyxl')
 
 
@@ -49,16 +51,50 @@ def highlight_outliers(s):
     return ['background-color: yellow' if v else '' for v in is_minus | is_outlier_high | is_outlier_low]
 
 
-def create_dfs(file_name, dir_name):
-    check_file_exist = file_name[:len(file_name)-5] + '_df'
+def create_df1(file_name, dir_name):
+    check_file_exist = file_name[:len(file_name) - 5] + '_df'
     try:
-        results_without = pd.read_excel(check_file_exist + '.xlsx', index_col=False)
+        results_without = pd.read_excel(dir_name + check_file_exist + '.xlsx', index_col=False)
         results_without = results_without.drop(['Unnamed: 0'], axis=1)
-        results_with = pd.read_excel(check_file_exist + '_outliers.xlsx', index_col=False)
+        results_with = pd.read_excel(dir_name + check_file_exist + '_outliers.xlsx', index_col=False)
         results_with = results_with.drop(['Unnamed: 0'], axis=1)
         return results_without, results_with
     except:
         print('\n\nprocessing...')
+    data = pd.read_excel(file_name, index_col=False)
+    data = data.loc[data.index.difference([0, 1, 2, 3])]
+    data = data.rename(columns={'Unnamed: 0': 'treatment', 'Unnamed: 1': 'time', 'Distance moved.1': 'mean'})
+    data = data.reset_index()
+    treatments = list(data.treatment.unique())
+    results_with = pd.DataFrame()
+    for t in treatments:
+        temp = data.loc[data['treatment'] == t]
+        results_with[t] = temp['mean'].values
+    results_with = results_with[:len(results_with)-1]
+    print('removed the last second!!')
+    results_with = results_with[~results_with.isin(["?"])]
+
+    report_outliers(results_with, 'all', dir_name)
+    results_without = pd.DataFrame()
+    for t in results_with.columns:
+        results_without[t] = remove_outliers(results_with[t].values)
+
+    file_name = file_name[:len(file_name) - 5]
+    results_without.to_excel(dir_name + file_name + '_df_outliers.xlsx')
+    results_with.to_excel(dir_name + file_name + '_df.xlsx')
+    return results_without, results_with
+
+
+def create_df2(file_name, dir_name):
+    check_file_exist = file_name[:len(file_name)-5] + '_df'
+    try:
+        results_without = pd.read_excel(dir_name + check_file_exist + '.xlsx', index_col=False)
+        results_without = results_without.drop(['Unnamed: 0'], axis=1)
+        results_with = pd.read_excel(dir_name + check_file_exist + '_outliers.xlsx', index_col=False)
+        results_with = results_with.drop(['Unnamed: 0'], axis=1)
+        return results_without, results_with
+    except:
+        print('')
     data = pd.read_excel(file_name, index_col=False)
     data = data.loc[data.index.difference([0, 1, 2])]
     data = data.rename(columns={'Unnamed: 0': 'treatment', 'Unnamed: 2': 'col', 'Unnamed: 3': 'time',
@@ -101,15 +137,9 @@ def create_dfs(file_name, dir_name):
     results_with = results_with[:len(results_with)]
     print('removed the last second!!')
     file_name = file_name[:len(file_name)-5]
-    results_with.to_excel(file_name + '_df_outliers.xlsx')
-    results_without.to_excel(file_name + '_df.xlsx')
+    results_with.to_excel(dir_name + file_name + '_df_outliers.xlsx')
+    results_without.to_excel(dir_name + file_name + '_df.xlsx')
     return results_without, results_with
-
-
-# file = 'new_files/21.9.2020_T_1_A.xlsx'
-# results_without1, results_with1 = create_df(file, '')
-# print(results_with1)
-# print(results_without1)
 
 
 

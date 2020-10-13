@@ -1,67 +1,33 @@
 from class_fig import *
 from create_data import *
 
-import traceback
 import glob
 import xlrd
 import warnings
 import jinja2
-import os
 from datetime import datetime
-# import scikit_posthocs as sp
-from scipy import stats
-from os import path
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.simplefilter("ignore")
 
 
 def get_files():
     files = glob.glob("./*.xlsx")
     if len(files) == 0:
-        print("can't find excel files in this dir, run from another dir")
-        exit(1)
+        print("can't find excel files in this dir, close window and run from another dir")
+        i = 1
+        while True:
+            i += 1
     files = [f for f in files if 'df' not in f]
     return files
 
 
 def choose_file(files):
     print("files in this dir:")
-
     for i in range(len(files)):
         print("{0:<5} {1}".format(i+1, files[i]))
     m = 'which file do you want to examine? enter num: '
-    # return files[get_input(len(files), m)]
-    return files[2]
-
-
-def create_df(file_name):
-    data = pd.read_excel(file_name, index_col=False)
-    data = data.loc[data.index.difference([0, 1, 2, 3])]
-    data = data.rename(columns={'Unnamed: 0': 'treatment', 'Unnamed: 1': 'time', 'Distance moved.1': 'mean'})
-    data = data.reset_index()
-    treatments = list(data.treatment.unique())
-    times = list(data.time.unique())
-    results = pd.DataFrame()
-    for t in treatments:
-        temp = data.loc[data['treatment'] == t]
-        results[t] = temp['mean'].values
-    results = results[:len(results)-1]
-    times = times[:len(times)]
-    print('removed the last second!!')
-    results = results[~results.isin(["?"])]
-    return results, treatments, times
-
-
-def kruskal_wallis(lst_groups, dir_name, with_outliers=''):
-    f = open(dir_name + 'kruskal_wallis_results '+with_outliers, 'w')
-    k_w_res = stats.kruskal(*lst_groups)
-    h_val, p_val = k_w_res
-    f.write('h value = {0}\n'.format(h_val))
-    f.write('p value = {0}\n'.format(p_val))
-    print("\n\npreformed kruskal wallis test, results in kruskal_wallis_results")
-    # post_hoc_df = sp.posthoc_dunn(lst_groups, p_adjust='holm')
-    # post_hoc_df.to_excel(dir_name + "post_hoc_res "+with_outliers+'.xlsx')
-    f.close()
-    print("\n\npreformed dunn test, results in post_hoc_res")
+    return files[get_input(len(files), m)]
+    # return files[2]
 
 
 def choose_action():
@@ -70,7 +36,7 @@ def choose_action():
     m = '\n'.join(['{0:<5}{1}'.format(i+1, options[i]) for i in range(len(options))])
     op = get_input(len(options), m)
     op = options[op]
-    # op = 'plot'
+    # op = 'box plot'
     return op
 
 
@@ -98,10 +64,13 @@ def create_results_dir(file_name):
         os.mkdir(home_dir)
     t = str(datetime.now())
     file_name = file_name[2:]
-    today = '{0}-{1}-{2} {3}-{4}-{5}'.format(t[:4], t[5:7], t[8:10], t[11:13], t[14:16], t[17:19])
-    dir_name = home_dir + "/" + file_name + " " + today
-    os.mkdir(dir_name)
-    os.mkdir(dir_name + "/images")
+    # today = '{0}-{1}-{2} {3}-{4}-{5}'.format(t[:4], t[5:7], t[8:10], t[11:13], t[14:16], t[17:19])
+    # dir_name = home_dir + "/" + file_name + " " + today
+    dir_name = home_dir + "/" + file_name
+    if not path.exists(dir_name):
+        os.mkdir(dir_name)
+        os.mkdir(dir_name + "/images")
+        os.mkdir(dir_name + "/stats")
     return dir_name + '/'
 
 
@@ -121,13 +90,17 @@ def z_standard(results_without, results_with, dir_name):
                                                       results_with.drop([treatment], axis=1)
     results_standard_without = (results_standard_without - t_mean_without)/t_std_without
     results_standard_with = (results_standard_with - t_mean_with)/t_std_with
-    box_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved z-standard', 'box'
-                  , 0, len(results_standard_without), dir_name)
-    box_fig.edit()
+    m = '\n\nwant to see results in:\n1\tbox plot\n2\tbar plot'
+    inp = get_input(2, m)
+    if inp == 0:
+        box_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved z-standard', 'box'
+                      , 0, len(results_standard_without), dir_name)
+        box_fig.edit()
 
-    bar_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved z-standard', 'bar', 0,
-                  len(results_standard_without), dir_name)
-    bar_fig.edit()
+    else:
+        bar_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved z-standard', 'bar', 0,
+                      len(results_standard_without), dir_name)
+        bar_fig.edit()
 
     treatments = results_standard_without.columns
     m = '\n\nchoose reference treatment:\n' + '\n'.join(['{0:<5}{1}'.format(i + 1, treatments[i]) for i
@@ -152,24 +125,27 @@ def z_standard(results_without, results_with, dir_name):
 
 
 def main():
-    while True:
-        files = get_files()
-        file_name = choose_file(files)
-        dir_name = create_results_dir(file_name)
-        results_without, results_with = create_dfs(file_name, dir_name)
-        while True:
-            inp = activate_func(results_without, results_with, dir_name)
-            if inp == 'y':
-                break
-
-
-if __name__ == "__main__":
     try:
-        main()
+        while True:
+            files = get_files()
+            file_name = choose_file(files)
+            dir_name = create_results_dir(file_name)
+            try:
+                results_without, results_with = create_df2(file_name, dir_name)
+            except:
+                results_without, results_with = create_df1(file_name, dir_name)
+            while True:
+                inp = activate_func(results_without, results_with, dir_name)
+                if inp == 'y':
+                    break
     except Exception as e:
         traceback.print_exc()
         print(e)
         print('\n\nencountered a problem restarting....\n\n')
         main()
+
+
+if __name__ == "__main__":
+    main()
 
 
