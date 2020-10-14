@@ -6,7 +6,6 @@ from scipy import stats
 import scikit_posthocs as sp
 import os
 from os import path
-plt.rcParams['axes.grid'] = True
 
 
 def get_input(end, message, start=1):
@@ -68,6 +67,7 @@ class Fig:
         self.groups_letter_without = []
         self.groups_letter_with = []
         self.signature = self.get_signature()
+        self.grid = True
 
     def show_save(self, save=False):
         if self.time_jump > 1:
@@ -107,7 +107,13 @@ class Fig:
                         index += 1
             elif self.type == 'bar':
                 means = [np.mean(arr) for arr in lst]
-                axes[i].bar(self.treatments_to_plot, means)
+                std = [np.std(arr) for arr in lst]
+                # std = [tuple([0]*len(std)), std]
+                axes[i].bar(self.treatments_to_plot, means, align='center', capsize=10, alpha=0.5)
+                plotline, caplines, barlinecols = axes[i].errorbar(self.treatments_to_plot, means, yerr=std,
+                                                                   lolims=True, capsize=0, ls='None', color='k')
+                caplines[0].set_marker('_')
+                caplines[0].set_markersize(20)
             elif self.type == 'bar_st':
                 t_mean = data[i][self.treatment].values[self.start:self.end].mean()
                 means = [np.mean(arr)/t_mean * 100 for arr in lst]
@@ -127,6 +133,8 @@ class Fig:
                                                                                    != 'plot' else ''))
             axes[i].set_xlabel(self.x_label)
             axes[i].set_ylabel(self.y_label)
+            if self.grid:
+                axes[i].grid()
 
         if save:
             plt.savefig(self.dir_name_images + input('enter fig name: '))
@@ -144,15 +152,15 @@ class Fig:
 
     def change_start_time(self):
         m = 'enter new start time in the range 0 - {0}: '.format(self.end)
-        self.start = get_input(self.end, m) - 1
+        self.start = get_input(self.end, m) + 1
 
     def change_end_time(self):
         m = 'enter new end time in the range {0} - {1}: '.format(self.start, len(self.data))
-        self.end = get_input(self.end, m, self.start) - 1
+        self.end = get_input(self.end, m, self.start) + 1
 
     def change_time_jump(self):
         m = 'enter new time jump'
-        self.time_jump = get_input(200, m)
+        self.time_jump = get_input(200, m) + 1
 
     def choose_treatments_and_order(self):
         print('\n'.join(['{0:<5} {1}'.format(i + 1, self.treatments_to_plot[i])
@@ -164,59 +172,50 @@ class Fig:
         except:
             print('bad input try again...')
 
-        
+    def change_treatment_name(self):
+        m = 'choose name to change:\n' + '\n'.join(['{0:<5} {1}'.format(i + 1, self.treatments_to_plot[i])
+                                                    for i in range(len(self.treatments_to_plot))])
+        to_change = self.treatments_to_plot[get_input(len(self.treatments_to_plot), m)]
+        new_name = input('enter new name: ')
+        self.data = self.data.rename(columns={to_change: new_name})
+        self.data_outliers = self.data_outliers.rename(columns={to_change: new_name})
+        self.treatments_to_plot = list(self.treatments_to_plot)
+        self.treatments_to_plot[self.treatments_to_plot.index(to_change)] = new_name
+        color = self.colors.pop(to_change)
+        self.colors[new_name] = color
+
+    def show_fig(self):
+        self.show_save()
+
+    def save_fig(self):
+        self.show_save(save=True)
+
+    def do_kruskal_wallis(self):
+        self.kruskal_wallis()
+
+    def change_line_color(self):
+        self.choose_colors()
+
+    def change_grid(self):
+        self.grid = not self.grid
 
     def edit(self):
         self.show_save()
-        choices_val = ['change title', 'change x label', 'change y label', 'change start time', 'change end time',
-                       'change time jump']
-        choices_multiple_val = ['choose treatments and order']
-        special_val = ['change treatment name', 'show fig', 'save fig', 'finish edit']
-        choices = choices_val + choices_multiple_val + special_val + (['do kruskal wallis'] if self.type == 'box'
-                                                                      else []) + (['change line color']
-                                                                      if self.type == 'plot' else [])
-        attribute = ['title', 'x_label', 'y_label', 'start', 'end', 'time_jump']
+        choices = ['change title', 'change x label', 'change y label', 'change start time', 'change end time',
+                   'change time jump', 'choose treatments and order', 'change treatment name']
+        choices += (['do kruskal wallis'] if self.type == 'box' else []) + (['change line color'] if self.type == 'plot'
+                                                                            else [])
+        choices += ['change grid']
+        choices += ['show fig', 'save fig']
+        choices += ['finish edit']
         actions = '\n'.join(['{0:<5}{1}'.format(i + 1, choices[i]) for i in range(len(choices))])
         while True:
             m = '\nchoose action (enter number):\n' + actions + "\n"
             inp = get_input(len(actions), m)
-            together = len(choices_val) + len(choices_multiple_val)
-            if inp < len(choices_val):
-                new_val = input('enter new {0}: '.format(attribute[inp]))
-                if new_val.isdigit():
-                    new_val = int(new_val)
-                setattr(self, attribute[inp], new_val)
-            elif inp < len(choices_val) + len(choices_multiple_val):
-                print('\n'.join(['{0:<5} {1}'.format(i + 1, self.treatments_to_plot[i])
-                                 for i in range(len(self.treatments_to_plot))]))
-                try:
-                    new_val = input('enter treatments you want to plot in order')
-                    new_val = [int(v) for v in new_val.split()]
-                    self.treatments_to_plot = [self.treatments_to_plot[v - 1] for v in new_val]
-                except:
-                    print('bad input try again...')
-            elif inp == together:
-                m = 'choose name to change:\n' + '\n'.join(['{0:<5} {1}'.format(i + 1, self.treatments_to_plot[i])
-                                                            for i in range(len(self.treatments_to_plot))])
-                to_change = self.treatments_to_plot[get_input(len(self.treatments_to_plot), m)]
-                new_name = input('enter new name: ')
-                self.data = self.data.rename(columns={to_change: new_name})
-                self.data_outliers = self.data_outliers.rename(columns={to_change: new_name})
-                self.treatments_to_plot = list(self.treatments_to_plot)
-                self.treatments_to_plot[self.treatments_to_plot.index(to_change)] = new_name
-                color = self.colors.pop(to_change)
-                self.colors[new_name] = color
-            elif inp == together+1:
-                self.show_save()
-            elif inp == together+2:
-                self.show_save(save=True)
-            elif inp == together+3:
+            if inp == len(choices) - 1:
                 break
-            elif inp == together+4:
-                if self.type == 'plot':
-                    self.choose_colors()
-                else:
-                    self.kruskal_wallis()
+            action = choices[inp].replace(' ', '_')
+            getattr(self, action)()
 
     def choose_colors(self):
         print('\n\ncolors code\n' + str(Fig.colors))
@@ -288,6 +287,7 @@ class Fig:
                     groups_letter = {}
                     for t in self.treatments_to_plot:
                         groups_letter[t] = [c for c in letters if t in letters[c]]
+                    self.signature = self.get_signature()
                     if i == 0:
                         print("\npreformed dunn test, results in post_hoc_res")
                         print('treatments are in the same group if they had significant correlation (less than 0.05)')

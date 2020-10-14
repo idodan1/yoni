@@ -5,7 +5,6 @@ import glob
 import xlrd
 import warnings
 import jinja2
-from datetime import datetime
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.simplefilter("ignore")
 
@@ -26,8 +25,8 @@ def choose_file(files):
     for i in range(len(files)):
         print("{0:<5} {1}".format(i+1, files[i]))
     m = 'which file do you want to examine? enter num: '
-    return files[get_input(len(files), m)]
-    # return files[2]
+    # return files[get_input(len(files), m)]
+    return files[9]
 
 
 def choose_action():
@@ -35,8 +34,8 @@ def choose_action():
     options = ['plot', 'box plot', 'bar plot', 'z standard', 'go back to files']
     m = '\n'.join(['{0:<5}{1}'.format(i+1, options[i]) for i in range(len(options))])
     op = get_input(len(options), m)
-    op = options[op]
-    # op = 'box plot'
+    # op = options[op]
+    op = 'plot'
     return op
 
 
@@ -62,10 +61,7 @@ def create_results_dir(file_name):
     home_dir = 'results from script'
     if not path.exists(home_dir):
         os.mkdir(home_dir)
-    t = str(datetime.now())
     file_name = file_name[2:]
-    # today = '{0}-{1}-{2} {3}-{4}-{5}'.format(t[:4], t[5:7], t[8:10], t[11:13], t[14:16], t[17:19])
-    # dir_name = home_dir + "/" + file_name + " " + today
     dir_name = home_dir + "/" + file_name
     if not path.exists(dir_name):
         os.mkdir(dir_name)
@@ -130,14 +126,17 @@ def main():
             files = get_files()
             file_name = choose_file(files)
             dir_name = create_results_dir(file_name)
+            good_file = True
             try:
-                results_without, results_with = create_df2(file_name, dir_name)
+                results_without, results_with = create_df(file_name, dir_name)
             except:
-                results_without, results_with = create_df1(file_name, dir_name)
-            while True:
+                print('file is not in the right format choose another file')
+                good_file = False
+            while good_file:
                 inp = activate_func(results_without, results_with, dir_name)
                 if inp == 'y':
                     break
+
     except Exception as e:
         traceback.print_exc()
         print(e)
