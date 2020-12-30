@@ -1,12 +1,28 @@
 from class_fig import *
 from create_data import *
-
+import traceback
 import glob
 import xlrd
 import warnings
 import jinja2
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.simplefilter("ignore")
+
+
+def get_start_end(len_time):
+    m = '\n\nenter {0} time (a number between {1} to {2}): '
+    start = get_input(len_time, m.format('start', 0, len_time), 0)
+    end = get_input(len_time, m.format('end', start+1, len_time), start+1)
+    return start, end
+
+
+def choose_action_for_graph():
+    options = ['mean', 'median', 'sum', 'go back']
+    actions = '\n'.join(['{0:<5}{1}'.format(i + 1, options[i]) for i in range(len(options))])
+    m = "\nfor every fish calculate by:\n" + actions + "\n"
+    # inp = get_input(len(options), m)
+    inp = 0  ##########
+    return options[inp]
 
 
 def get_files():
@@ -16,7 +32,7 @@ def get_files():
         i = 1
         while True:
             i += 1
-    files = [f for f in files if 'df' not in f]
+    files = [f[2:] for f in files]
     return files
 
 
@@ -24,7 +40,7 @@ def choose_file(files):
     print("files in this dir:")
     for i in range(len(files)):
         print("{0:<5} {1}".format(i+1, files[i]))
-    m = 'which file do you want to examine? enter num: '
+    m = '\n\nwhich file do you want to examine? enter num: '
     # return files[get_input(len(files), m)]
     return files[9]
 
@@ -33,91 +49,116 @@ def choose_action():
     print("\n\nwhat do you want to do with this file?")
     options = ['plot', 'box plot', 'bar plot', 'z standard', 'go back to files']
     m = '\n'.join(['{0:<5}{1}'.format(i+1, options[i]) for i in range(len(options))])
-    op = get_input(len(options), m)
+    # op = get_input(len(options), m)
     # op = options[op]
-    op = 'plot'
+    op = 'z standard'
     return op
 
 
-def activate_func(results_without, results_with, dir_name):
+def activate_func(results, treatment_letter, dir_name):
     op = choose_action()
     if op == 'plot':
-        fig = Fig(results_without, results_with, 'time(sec)', 'distance(mm)', 'movement over time', 'plot', 0, len(results_without),
-                  dir_name)
+        options = ['mean', 'median', 'go back']
+        actions = '\n'.join(['{0:<5}{1}'.format(i + 1, options[i]) for i in range(len(options))])
+        m = "\nplot by:\n" + actions + "\n"
+        inp = get_input(len(options), m)
+        # inp = 0 ##########
+        if inp == len(options) - 1:
+            return 'y'
+        fig = Fig(data=results, treatment_letter=treatment_letter, x_label='time(sec)', y_label='distance(mm)', title='movement over time', g_type='plot',
+                  start=0, end=len(results), dir_name=dir_name, how_to_plot=options[inp])
         fig.edit()
     elif op == 'box plot':
-        fig = Fig(results_without, results_with, 'groups', 'mean', 'box plot', 'box', 0, len(results_without), dir_name)
+        start, end = get_start_end(len(results))
+        # start = 0
+        # end = 500
+
+        action = choose_action_for_graph()
+        if action == 'go back':
+            return 'y'
+
+        fig = Fig(data=results, treatment_letter=treatment_letter, x_label='groups', y_label=action,
+                  title='box plot', g_type='box', start=start, end=end, dir_name=dir_name,
+                  how_to_plot=action)
         fig.edit()
     elif op == 'bar plot':
-        fig = Fig(results_without, results_with, 'groups', 'mean', 'bar plot', 'bar', 0, len(results_without), dir_name)
+        start, end = get_start_end(len(results))
+        # start = 0
+        # end = 500
+
+        action = choose_action_for_graph()
+        if action == 'go back':
+            return 'y'
+
+        fig = Fig(data=results, treatment_letter=treatment_letter, x_label='groups', y_label=action,
+                      title='bar plot', g_type='bar', start=start, end=end, dir_name=dir_name,
+                      how_to_plot=action)
         fig.edit()
     elif op == 'z standard':
-        z_standard(results_without, results_with, dir_name)
+        z_standard(results, treatment_letter, dir_name)
     else:
         return 'y'
+
+
+def z_standard(results, treatment_letter, dir_name):
+    # start, end = get_start_end(len(results))
+    start = 0
+    end = 500
+
+    action = choose_action_for_graph()
+    if action == 'go back':
+        return
+
+    treatments = list(treatment_letter.keys())
+    treatment_message = treatments + ['quit and go back']
+    m = '\n\nchoose treatment to correct by:\n' + '\n'.join(
+        ['{0:<5}{1}'.format(i + 1, treatment_message[i]) for i
+         in range(len(treatment_message))])
+    # treatment = treatment_message[get_input(len(treatment_message), m)]  ##########
+    treatment = treatment_message[0]
+    if treatment == 'quit and go back':
+        return
+    res_options = ['box', 'bar', 'quit and go back']
+    m = '\n\nwant to see results in:\n' + '\n'.join(
+        ['{0:<5}{1}'.format(i + 1, res_options[i]) for i
+         in range(len(res_options))])
+    # inp = res_options[get_input(3, m)]
+    inp = 'bar'
+    if inp == 'quit and go back':
+        return
+    fig = Fig(data=results, treatment_letter=treatment_letter, x_label='groups', y_label=action,
+              title=inp + 'plot', g_type='bar_st', start=start, end=end, dir_name=dir_name,
+              how_to_plot=action, treatment=treatment, standard_type=inp)
+    fig.edit()
+
+    treatments = fig.treatments_to_plot
+    treatment_message = list(treatments) + ['quit and go back']
+    m = '\n\nchoose reference treatment:\n' + '\n'.join(['{0:<5}{1}'.format(i + 1, treatment_message[i]) for i
+                                                         in range(len(treatment_message))])
+    treatment = treatment_message[get_input(len(treatment_message), m)]
+    # treatment = treatment_message[0]
+    if treatment == 'quit and go back':
+        return
+    inp = input('want to see bar graph of distance moved (%)?(y/n)')
+    if inp == 'y':
+        fig.bar_by_percent(treatment)
+        inp = input('want to see bar graph of distance moved reduction(%)?(y/n)')
+        if inp == 'y':
+            fig.bar_percent_reduction(treatment)
 
 
 def create_results_dir(file_name):
     home_dir = 'results from script'
     if not path.exists(home_dir):
         os.mkdir(home_dir)
-    file_name = file_name[2:]
+    file_name = file_name
     dir_name = home_dir + "/" + file_name
     if not path.exists(dir_name):
         os.mkdir(dir_name)
         os.mkdir(dir_name + "/images")
         os.mkdir(dir_name + "/stats")
+        os.mkdir(dir_name + "/excel")
     return dir_name + '/'
-
-
-def z_standard(results_without, results_with, dir_name):
-    treatments = results_without.columns
-    m = '\n\nchoose treatment to correct by:\n' + '\n'.join(['{0:<5}{1}'.format(i+1, treatments[i]) for i
-                                                             in range(len(treatments))])
-    treatment = treatments[get_input(len(treatments), m)]
-
-    t_mean_without, t_mean_with = results_with[treatment].mean(), results_with[treatment].mean()
-    t_std_without, t_std_with = results_without[treatment].std(), results_with[treatment].std()
-    '''
-    t_mean = results[treatment][6:90].mean()  # to compare with ram
-    t_std = results[treatment][6:90].std()
-    '''
-    results_standard_without, results_standard_with = results_without.drop([treatment], axis=1),\
-                                                      results_with.drop([treatment], axis=1)
-    results_standard_without = (results_standard_without - t_mean_without)/t_std_without
-    results_standard_with = (results_standard_with - t_mean_with)/t_std_with
-    m = '\n\nwant to see results in:\n1\tbox plot\n2\tbar plot'
-    inp = get_input(2, m)
-    if inp == 0:
-        box_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved z-standard', 'box'
-                      , 0, len(results_standard_without), dir_name)
-        box_fig.edit()
-
-    else:
-        bar_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved z-standard', 'bar', 0,
-                      len(results_standard_without), dir_name)
-        bar_fig.edit()
-
-    treatments = results_standard_without.columns
-    m = '\n\nchoose reference treatment:\n' + '\n'.join(['{0:<5}{1}'.format(i + 1, treatments[i]) for i
-                                                         in range(len(treatments))])
-    treatment = treatments[get_input(len(treatments), m)]
-    bar_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved (%)', 'bar_st', 0,
-                  len(results_standard_without), dir_name, treatment)
-    bar_fig.edit()
-
-    bar_fig = Fig(results_standard_without, results_standard_with, 'groups', 'mean', 'distance moved reduction(%)',
-                  'bar_st_red', 0, len(results_standard_without), dir_name, treatment)
-    bar_fig.edit()
-    """ for compering with ram
-    bar_fig = Fig(results_standard, results_standard, 'groups', 'mean', 'distance moved (%)', 'bar_st', 1,
-                  90, dir_name, treatment)
-    bar_fig.edit()
-
-    bar_fig = Fig(results_standard, results_standard, 'groups', 'mean', 'distance moved reduction(%)', 'bar_st_red', 1,
-                  90, dir_name, treatment)
-    bar_fig.edit()
-    """
 
 
 def main():
@@ -126,14 +167,18 @@ def main():
             files = get_files()
             file_name = choose_file(files)
             dir_name = create_results_dir(file_name)
+            dir_name_df = dir_name + "/excel"
             good_file = True
             try:
-                results_without, results_with = create_df(file_name, dir_name)
-            except:
-                print('file is not in the right format choose another file')
-                good_file = False
+                results, treatment_letter, dir_name = create_df(file_name, dir_name_df, dir_name)
+            except Exception as e:
+                traceback.print_exc()
+                print(e)
+            # except:
+            #     print('\n\nfile is not in the right format choose another file\n\n')
+            #     good_file = False
             while good_file:
-                inp = activate_func(results_without, results_with, dir_name)
+                inp = activate_func(results, treatment_letter, dir_name)
                 if inp == 'y':
                     break
 

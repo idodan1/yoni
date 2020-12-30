@@ -1,15 +1,9 @@
 import pandas as pd
-import os
 import numpy as np
-import traceback
+import pickle
+import os
+from class_fig import get_input
 from os import path
-
-
-def report_outliers(df, treatment_name, dir_name):
-    dir_name = dir_name + 'outliers_data'
-    if not path.exists(dir_name):
-        os.mkdir(dir_name)
-    create_excel_outliers(df, treatment_name, dir_name)
 
 
 def remove_outliers(arr):
@@ -25,46 +19,36 @@ def remove_outliers(arr):
     return lst
 
 
-def create_excel_outliers(df, treatment_name, dir_name):
-    index = list(df.index)
-    values = [[v for v in df[col].values if v >= 0] for col in df.columns]
-    columns = df.columns
-    new_row = pd.DataFrame({columns[i]: np.std(values[i]) for i in range(len(columns))}, index=[1])
-    df = pd.concat([new_row, df[:]]).reset_index(drop=True)
-    new_row = pd.DataFrame({columns[i]: np.mean(values[i]) for i in range(len(columns))}, index=[0])
-    df = pd.concat([new_row, df[:]]).reset_index(drop=True)
-    df.rename(index={0: 'mean', 1: 'std'}, inplace=True)
-    df.index = ['mean', 'std'] + index
-
-    df = df.style.apply(highlight_outliers)
-    treatment_name = treatment_name.replace('/', '.')
-    df.to_excel(dir_name + "/" + treatment_name + '_outliers data frame.xlsx', engine='openpyxl')
-
-
-def highlight_outliers(s):
-    values = [v for v in s.values if v >= 0]
-    mean = np.mean(values)
-    sd = np.std(values)
-    is_minus = s < 0
-    is_outlier_high = s > mean+2*sd
-    is_outlier_low = s < mean-2*sd
-    return ['background-color: yellow' if v else '' for v in is_minus | is_outlier_high | is_outlier_low]
-
-
-def create_df(file_name, dir_name):
-    check_file_exist = file_name[:len(file_name)-5] + '_df'
-    try:
-        results_without = pd.read_excel(dir_name + check_file_exist + '.xlsx', index_col=False)
-        results_without = results_without.drop(['Unnamed: 0'], axis=1)
-        results_with = pd.read_excel(dir_name + check_file_exist + '_outliers.xlsx', index_col=False)
-        results_with = results_with.drop(['Unnamed: 0'], axis=1)
-        return results_without, results_with
-    except:
-        print('\n\nprocessing...')
+def make_df_ready(file_name, dir_name_files, dir_name):
     data = pd.read_excel(file_name, index_col=False)
+    col_to_plot_by = 'Distance moved.1'
+    name_col = 'Unnamed: 0'
+    row = list(data[1:2].values[0])
+    if len(row) > 8:  # the special case of sleeping files
+        cols = list(data.columns)
+        choices = row[-3:]
+        m = '\nin this type of file you need to choose variable to plot by!!\nchoose variable to plot by:\n' +\
+            '\n'.join(["{0:<5}{1}".format(i+1, choices[i]) for i in range(len(choices))])
+        inp = choices[get_input(len(choices), m)]
+        # inp = "Total"
+        var_choice = inp
+        col_to_plot_by = cols[row.index(inp)]
+        name_col = 'Independent Variable'
+        home_dir = dir_name_files[:-7]
+        i = 0
+        while True:
+            try:
+                dir_name = home_dir + ' by {0}{1}'.format(var_choice, i)
+                dir_name_files = dir_name + "/excel"
+                os.rename(home_dir, dir_name)
+                dir_name += "/"
+                break
+            except:
+                i += 1
+
     data = data.loc[data.index.difference([0, 1, 2])]
-    data = data.rename(columns={'Unnamed: 0': 'treatment', 'Unnamed: 2': 'col', 'Unnamed: 3': 'time',
-                                'Distance moved.1': 'total distance'})
+    data = data.rename(columns={name_col: 'treatment', 'Unnamed: 2': 'col', 'Unnamed: 3': 'time',
+                                col_to_plot_by: 'total distance'})
     data = data.reset_index()
     treatments = data.treatment.unique()
     cols = data.col.unique()
@@ -75,40 +59,60 @@ def create_df(file_name, dir_name):
             cols_letters.append(letter)
 
     results = pd.DataFrame()
+    treatment_letter = {}
     for c in cols:
         temp = data.loc[data['col'] == c]
-        treatment = treatments[cols_letters.index(c[0])]
-        col_name = treatment + "_" + c
-        results[col_name] = temp['total distance'].values
+        treatment_letter[treatments[cols_letters.index(c[0])]] = c[0]
+        results[c] = temp['total distance'].values
+    results = results.apply(pd.to_numeric, errors='coerce')
+    results = results.replace('-', np.NaN)
+    return results, treatment_letter, dir_name_files, dir_name
 
-    results = results.replace('-', -1)
 
-    results_without = pd.DataFrame()
-    results_with = pd.DataFrame()
-    print(results.columns)
-    for t in treatments:
-        all_t = [c for c in results.columns if c.split('_')[0] == t]
-        t_df = results[all_t]
-        print(t_df)
-        report_outliers(t_df.T, t, dir_name)
-        without_outliers = []
-        with_outliers = []
-        for i in range(len(t_df)):
-            values = [v for v in t_df[i:i+1].values[0] if v >= 0]
-            with_outliers.append(np.mean(values))
-            values_without = remove_outliers(values)
-            without_outliers.append(np.mean(values_without))
-        results_with[t] = with_outliers
-        results_without[t] = without_outliers
+def check_dir_n_df(file_name):
+    exist = True
+    home_dir = 'results from script'
+    if not path.exists(home_dir):
+        os.mkdir(home_dir)
+        exist = False
+    dir_name = home_dir + "/" + file_name
+    if not exist or not path.exists(dir_name):
+        os.mkdir(dir_name)
+        os.mkdir(dir_name + "/images")
+        os.mkdir(dir_name + "/stats")
+        os.mkdir(dir_name + "/excel")
+    return dir_name + '/'
 
-    results_without = results_without[:len(results_without)-1]
-    results_with = results_with[:len(results_with)-1]
+
+def check_file_type(file_name):
+    data = pd.read_excel(file_name, index_col=False)
+    return data, len(list(data.columns)) == 8
+
+
+def create_df(file_name, dir_name_files, dir_name):
+    data, reg_file = check_file_type(file_name)
+    print(reg_file)
+    x = 1
+    while True:
+        x += 1
+    check_dir_n_df(file_name)
+    pickle_name = "_treatment_letter.pk1"
+    file_name_read = file_name[:len(file_name)-5]
+    try:
+        results = pd.read_excel(dir_name_files + file_name_read + '_df.xlsx', index_col=0)
+        with open(dir_name_files + file_name_read + pickle_name, 'rb') as f:
+            treatment_letter = pickle.load(f)
+        return results, treatment_letter, dir_name
+    except:
+        print('\n\nprocessing...')
+    results, treatment_letter, dir_name_files, new_dir_name = make_df_ready(file_name, dir_name_files, dir_name)
+    results = results[:len(results)-1]
     print('removed the last second!!')
-    file_name = file_name[:len(file_name)-5]
-    results_with.to_excel(dir_name + file_name + '_df_outliers.xlsx')
-    results_without.to_excel(dir_name + file_name + '_df.xlsx')
-    return results_without, results_with
-
+    file_name_write = file_name[:len(file_name)-5]
+    results.to_excel(dir_name_files + file_name_write + '_df.xlsx')
+    with open(dir_name_files + file_name_write + pickle_name, 'wb') as f:
+        pickle.dump(treatment_letter, f)
+    return results, treatment_letter, new_dir_name
 
 
 

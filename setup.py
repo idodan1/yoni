@@ -5,7 +5,7 @@ base = None
 executables = [Executable("yoni.py", base=base)]
 
 packages = ["idna", 'numpy', 'pandas', 'jinja2', 'matplotlib', 'glob', 'warnings',
-            'os', 'scipy', 'scikit_posthocs', 'datetime', 'seaborn']
+            'os', 'scipy', 'scikit_posthocs', 'datetime', 'seaborn', 'pickle', 'copy']
 options = {
     'build_exe': {
         'packages': packages,
