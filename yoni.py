@@ -42,7 +42,7 @@ def choose_file(files):
         print("{0:<5} {1}".format(i+1, files[i]))
     m = '\n\nwhich file do you want to examine? enter num: '
     # return files[get_input(len(files), m)]
-    return files[9]
+    return files[9]  
 
 
 def choose_action():
