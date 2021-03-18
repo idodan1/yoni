@@ -25,8 +25,8 @@ def get_input(end, message, start=1):
         val = int(val)
         if start <= val <= end:
             return val-1
-    print('wrong input try again...\n')
-    return get_input(end, message)
+    print('wrong input try again...')
+    return get_input(end, message, start)
 
 
 def report_outliers(df, treatment_name, dir_name, type_plot):
@@ -116,8 +116,8 @@ class Fig:
         color_values[colors_letter[i]] = col_val[i]
 
     def __init__(self, data, treatment_letter, x_label, y_label, title, g_type, start, end, dir_name, how_to_plot,
-                 treatment="", standard_type=""):
-        self.data = data
+                 treatment="", standard_type="", remove_liars=False):
+        self.data = data[start:end]
         self.treatment_letter = copy.deepcopy(treatment_letter)
         self.treatments_to_plot = copy.deepcopy(list(treatment_letter.keys()))
         self.x_label = x_label
@@ -139,6 +139,7 @@ class Fig:
         self.grid = True
         self.how_to_plot = how_to_plot
         self.standard_type = standard_type
+        self.remove_liars = remove_liars
         self.title_size = 12
         self.xlabel_size = 10
         self.ylabel_size = 10
@@ -146,10 +147,11 @@ class Fig:
         self.time_size = 8
         self.groups_label_size = 8
         self.groups_letter_size = 10
+        self.remove_liars_over_time = False
         if self.type == 'bar' or self.type == 'bar_st':
             self.std = True
         if self.type != 'plot':
-            self.dir_name_stats = self.dir_name_stats + 'start time={0}, end time={1}'.format(self.start+1, self.end+1)
+            self.dir_name_stats = self.dir_name_stats + 'start time={0}, end time={1}'.format(self.start, self.end)
             if not path.exists(self.dir_name_stats):
                 os.mkdir(self.dir_name_stats)
             self.dir_name_stats += '/'
@@ -173,32 +175,36 @@ class Fig:
                 lst = [list(col_df[col].values) for col in col_df.columns]
                 lst_without = [remove_outliers(arr) for arr in lst]
                 res_df[letter_treatment[letter]] = [np.nanmean(l) for l in lst_without]
-        print('\n\n\nremoved outliers from data frame')
-        print('you can find outliers data in stats')
+        if self.how_to_plot == 'mean':
+            print('\n\nremoved outliers from data frame')
+            print('you can find outliers data in stats')
         res_df.to_excel(self.dir_name_df + df_name)
         print('you can find df for plot in excel dir')
         return res_df
 
     def create_df_for_box(self, ouliers_title):
+        if self.how_to_plot == 'mean':
+            self.remove_liars_over_time = input("\n\nremove outliers values in this time period? (y/n)") == 'y'
+            if self.remove_liars_over_time:
+                print('\n\nyou can find outliers data in stats')
         print('\n\nit will take a few seconds :)')
         letter_treatment = {v: k for k, v in self.treatment_letter.items()}
         res = pd.DataFrame()
         for treatment in self.treatments_to_plot:
             letter = self.treatment_letter[treatment]
             cols = [col for col in self.data.columns if letter in col]
+            col_df = self.data[cols]
+            lst = [list(col_df[col].values) for col in col_df.columns]
             if self.how_to_plot == 'mean':
-                col_df = self.data[cols]
-                report_outliers(col_df, letter_treatment[letter], self.dir_name_stats, ouliers_title)
-                lst = [list(col_df[col].values) for col in col_df.columns]
-                lst_without = [remove_outliers(arr) for arr in lst]
+                lst_without = lst
+                if self.remove_liars_over_time:
+                    report_outliers(col_df, letter_treatment[letter], self.dir_name_stats, ouliers_title)
+                    lst_without = [remove_outliers(arr) for arr in lst]
                 res[letter_treatment[letter]] = [np.nanmean(l) for l in lst_without]
             elif self.how_to_plot == 'median':
-                res[letter_treatment[letter]] = list(self.data[cols].median().values)
+                res[letter_treatment[letter]] = [np.nanmedian(l) for l in lst]
             elif self.how_to_plot == 'sum':
-                res[letter_treatment[letter]] = list(self.data[cols].sum().values)
-        if self.how_to_plot == 'mean':
-            print('\n\n\nremoved outliers from data frame')
-            print('you can find outliers data in stats')
+                res[letter_treatment[letter]] = [np.nansum(l) for l in lst]
         return res
 
     def show_save(self, save=False):
@@ -211,8 +217,8 @@ class Fig:
                 data = self.data
             if not hasattr(self, "df_by_treatment"):
                 self.df_by_treatment = self.create_df_for_plot(data)
-            lst = [self.df_by_treatment[col].values[self.start // self.time_jump:self.end // self.time_jump] for col in
-                   self.df_by_treatment.columns if col in self.treatments_to_plot]
+            lst = [self.df_by_treatment[col].values[self.start // self.time_jump:self.end // self.time_jump] for col
+                   in self.treatments_to_plot]
             for j in range(len(self.treatments_to_plot)):
                 try:
                     axes.plot(range(self.start, self.end-self.time_jump, self.time_jump), lst[j],
@@ -223,7 +229,7 @@ class Fig:
                                  label=self.treatments_to_plot[j], linewidth=1,
                                  color=self.colors[self.treatments_to_plot[j]])
                 axes.tick_params(labelsize=self.time_size)
-                leg = axes.legend()
+                leg = axes.legend(loc='upper right')
                 leg_lines = leg.get_lines()
                 leg_texts = leg.get_texts()
                 plt.setp(leg_lines, linewidth=2)
@@ -232,7 +238,7 @@ class Fig:
             if not hasattr(self, "df_for_box"):
                 self.df_for_box = self.create_df_for_box('bar and box')
             lst = self.output_df_box_n_create_lst('bar and box')
-            print('\n\ndf for boxplot was saved in stats')
+            lst = [[x for x in l if str(x) != 'nan'] for l in lst]
             axes.boxplot(lst, labels=self.treatments_to_plot)
             if self.kruskal and self.signature == self.get_signature():
                 index = 1
@@ -244,7 +250,7 @@ class Fig:
             if not hasattr(self, "df_for_box"):
                 self.df_for_box = self.create_df_for_box('bar and box')
             lst = self.output_df_box_n_create_lst('bar and box')
-            print('\n\ndf for bar plot was saved in stats')
+            lst = [[x for x in l if str(x) != 'nan'] for l in lst]
             means = [np.nanmean(arr) for arr in lst]
             if self.std:
                 std = [np.nanstd(arr) for arr in lst]
@@ -268,12 +274,11 @@ class Fig:
                 self.mean_t_first = np.nanmean(self.df_for_box[self.treatment])
                 self.std_t_first = np.nanstd(self.df_for_box[self.treatment])
                 self.df_for_box = self.df_for_box.drop([self.treatment], axis=1)
+                self.df_for_box = (self.df_for_box - self.mean_t_first) / self.std_t_first
             if self.treatment in self.treatments_to_plot:
                 self.treatments_to_plot.remove(self.treatment)
-
-            self.df_for_box = (self.df_for_box - self.mean_t_first)/self.std_t_first
             lst = self.output_df_box_n_create_lst('z standard')
-            print('\n\ndf for z standard plot was saved in stats')
+            lst = [[x for x in l if str(x) != 'nan'] for l in lst]
             means = [np.nanmean(arr) for arr in lst]
             if self.std:
                 std = [np.nanstd(arr) for arr in lst]
@@ -294,8 +299,9 @@ class Fig:
             if self.type == 'bar_st_percent_reduction':
                 if self.treatment in self.df_for_box.columns:
                     self.df_for_box = self.df_for_box.drop(self.treatment, axis=1)
-            lst = self.output_df_box_n_create_lst('bar z standard')
-            print('\n\ndf for bar plot was saved in stats')
+            df_name = "z standard(%)" + (' reduction' if self.type == 'bar_st_percent_reduction' else '')
+            lst = self.output_df_box_n_create_lst(df_name)
+            lst = [[x for x in l if str(x) != 'nan'] for l in lst]
             means = [np.nanmean(arr) / self.t_mean_second * 100 for arr in lst]
             if self.type == 'bar_st_percent_reduction':
                 means = [100 - m for m in means]
@@ -313,7 +319,8 @@ class Fig:
             axes.grid()
 
         if save:
-            plt.savefig(self.dir_name_images + input('enter fig name: '))
+            img_name = input('enter fig name: ')
+            plt.savefig(self.dir_name_images + img_name + ".png")
         else:
             plt.show()
             # pass
@@ -329,15 +336,16 @@ class Fig:
 
     def change_start_time(self):
         m = '\n\nenter start time in the range 0 - {0}: '.format(self.end)
-        self.start = get_input(self.end, m) + 1
+        self.start = get_input(self.end, m, -1) + 1
 
     def change_end_time(self):
         m = '\n\nenter end time in the range {0} - {1}: '.format(self.start, len(self.data))
         self.end = get_input(len(self.data), m, self.start) + 1
 
     def change_time_jump(self):
+        max_time_jump = 200
         m = 'enter new time jump: '
-        self.time_jump = get_input(200, m) + 1
+        self.time_jump = get_input(max_time_jump, m) + 1
 
     def choose_treatments_and_order(self):
         print('\n'.join(['{0:<5} {1}'.format(i + 1, self.treatments_to_plot[i])
@@ -407,7 +415,7 @@ class Fig:
         actions = '\n'.join(['{0:<5}{1}'.format(i + 1, choices[i]) for i in range(len(choices))])
         while True:
             m = '\nchoose action (enter number):\n' + actions + "\n"
-            inp = get_input(len(actions), m)
+            inp = get_input(len(choices), m)
             if inp == len(choices) - 1:
                 break
             action = choices[inp].replace(' ', '_')
@@ -437,12 +445,13 @@ class Fig:
             else:
                 i += 1
                 file_name = file_name[:-1] + str(i)
-        lst_groups = [self.df_for_box[col].dropna().values for col in self.df_for_box if col in self.treatments_to_plot]
+        lst_groups = [self.df_for_box[col].dropna().values for col in self.treatments_to_plot]
         k_w_res = stats.kruskal(*lst_groups)
         h_val, p_val = k_w_res
         f.write('h value = {0}\n'.format(h_val))
         f.write('p value = {0}\n'.format(p_val))
         print("\npreformed kruskal wallis test, results in stats -> kruskal_wallis_results " + str(i))
+        self.signature = self.get_signature()
         if p_val < 0.05:
             print('the results are significant, preform post hoc tests? (y for yes)')
             # inp_krus = 'y'
@@ -458,7 +467,6 @@ class Fig:
                 groups = {}
                 critical_val = 0.05
                 means = [np.nanmean(l) for l in lst_groups]
-                # keys = list(self.df_for_box.columns)
                 keys = list(self.treatments_to_plot)
                 keys_sorted = [x for _, x in sorted(zip(means, keys), reverse=True)]
                 seen_groups = []
@@ -475,15 +483,15 @@ class Fig:
                 c = 'a'
                 seen_groups = []
                 for k in keys_sorted:
-                    if len(groups[k]) > 0 or k not in seen_groups:
-                        if not already_contained(groups[k], letters):
-                            letters[c] = [k] + groups[k]
-                            c = chr(ord(c)+1)
-                            seen_groups += groups[k]
+                    if (len(groups[k]) > 0 and not already_contained(groups[k], letters)) or\
+                            (len(groups[k]) == 0 and k not in seen_groups):
+                        letters[c] = [k] + groups[k]
+                        c = chr(ord(c)+1)
+                        seen_groups += groups[k]
                 groups_letter = {}
                 for t in self.treatments_to_plot:
                     groups_letter[t] = [c for c in letters if t in letters[c]]
-                self.signature = self.get_signature()
+
                 print("\npreformed dunn test, results in stats -> post hoc res")
                 print('treatments are in the same group if they are not statistically different (p val is more than 0.05)')
                 print('\nshow results from post hoc test on graph? (y for yes)')
@@ -508,25 +516,32 @@ class Fig:
         data_names = ['N', 'mean', 'median', 'std']
         data_for_col = []
         lst_for_graph = []
-        for col in self.df_for_box.columns:
-            if col in self.treatments_to_plot:
-                vals = list(self.df_for_box[col].values)
+        for col in self.treatments_to_plot:
+            vals = list(self.df_for_box[col].values)
+            if self.remove_liars:
                 mean, std = np.nanmean(vals), np.nanstd(vals)
                 high, low = mean + 2*std, mean - 2*std
                 vals = [v for v in vals if low <= v <= high]
-                lst_for_graph.append(vals)
-                data_for_col.append([len(vals), np.nanmean(vals), np.median(vals), np.nanstd(vals)])
-        df_for_name = self.dir_name_stats + "df for {0} by {1}.xlsx".format(type_df, self.how_to_plot)
+            lst_for_graph.append(vals)
+            data_for_col.append([len(vals), np.nanmean(vals), np.nanmedian(vals), np.nanstd(vals)])
+        df_for_name = self.dir_name_stats + "df for {0} by {1}{2}{3}.xlsx".format(type_df, self.how_to_plot,
+                                                                               ("" if self.remove_liars else
+                                                                                ' with outliers'),
+                                                                                ("" if self.remove_liars_over_time else
+                                                                                 " with outliers in this time period"))
         if not os.path.isfile(df_for_name):
             df_to_output = self.df_for_box
             for i in range(len(data_for_col[0])):
                 lst = [v[i] for v in data_for_col]
                 df_to_output = df_to_output.append(pd.Series(lst, index=self.treatments_to_plot,
-                                                                       name=data_names[i]))
-            df_to_output = df_to_output.style.apply(highlight_outliers,
-                                                    subset=(df_to_output.index[0:len(df_to_output)-len(data_names)],
-                                                            df_to_output.select_dtypes(float).columns))
+                                                                     name=data_names[i]))
+
+            if self.remove_liars:
+                df_to_output = df_to_output.style.apply(highlight_outliers,
+                                                        subset=(df_to_output.index[0:len(df_to_output)-len(data_names)],
+                                                                df_to_output.select_dtypes(float).columns))
             df_to_output.to_excel(df_for_name, engine='openpyxl')
+            print('\n\ndf for {0} by {1} was saved in stats'.format(type_df, self.how_to_plot))
         return lst_for_graph
 
     def bar_by_percent(self, treatment):
@@ -542,6 +557,7 @@ class Fig:
         self.edit()
 
     def change_font_size(self):
+        max_font_size = 40
         options = ['title', 'xlabel', 'ylabel'] + (['time', 'legend'] if self.type == 'plot' else ['groups label'])
         if self.kruskal:
             options += ['groups letter']
@@ -554,17 +570,24 @@ class Fig:
             if inp == 'go back':
                 return
             elif inp == 'title':
-                self.title_size = get_input(30, template.format(self.title_size))
+                self.title_size = get_input(max_font_size, template.format(self.title_size))+1
             elif inp == 'xlabel':
-                self.xlabel_size = get_input(30, template.format(self.xlabel_size))
+                self.xlabel_size = get_input(max_font_size, template.format(self.xlabel_size))+1
             elif inp == 'ylabel':
-                self.ylabel_size = get_input(30, template.format(self.ylabel_size))
+                self.ylabel_size = get_input(max_font_size, template.format(self.ylabel_size))+1
             elif inp == 'time':
-                self.time_size = get_input(30, template.format(self.time_size))
+                self.time_size = get_input(max_font_size, template.format(self.time_size))+1
             elif inp == 'groups label':
-                self.groups_label_size = get_input(30, template.format(self.groups_label_size))
+                self.groups_label_size = get_input(max_font_size, template.format(self.groups_label_size))+1
             elif inp == 'legend':
-                self.legend_size = get_input(30, template.format(self.legend_size))
+                self.legend_size = get_input(max_font_size, template.format(self.legend_size))+1
             elif inp == 'groups letter':
-                self.groups_letter_size = get_input(30, template.format(self.groups_letter_size))
+                self.groups_letter_size = get_input(max_font_size, template.format(self.groups_letter_size))+1
+
+
+
+
+
+
+
 

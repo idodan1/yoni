@@ -19,38 +19,32 @@ def remove_outliers(arr):
     return lst
 
 
-def make_df_ready(file_name, dir_name_files, dir_name):
+def make_df_ready(file_name, dir_name_files, dir_name, col_choice):
     data = pd.read_excel(file_name, index_col=False)
     col_to_plot_by = 'Distance moved.1'
     name_col = 'Unnamed: 0'
     row = list(data[1:2].values[0])
     if len(row) > 8:  # the special case of sleeping files
-        cols = list(data.columns)
-        choices = row[-3:]
-        m = '\nin this type of file you need to choose variable to plot by!!\nchoose variable to plot by:\n' +\
-            '\n'.join(["{0:<5}{1}".format(i+1, choices[i]) for i in range(len(choices))])
-        inp = choices[get_input(len(choices), m)]
-        # inp = "Total"
-        var_choice = inp
-        col_to_plot_by = cols[row.index(inp)]
         name_col = 'Independent Variable'
-        home_dir = dir_name_files[:-7]
-        i = 0
-        while True:
-            try:
-                dir_name = home_dir + ' by {0}{1}'.format(var_choice, i)
-                dir_name_files = dir_name + "/excel"
-                os.rename(home_dir, dir_name)
-                dir_name += "/"
-                break
-            except:
-                i += 1
+        if col_choice == "":
+            choices = ['Total', 'Frequency', 'Cumulative Duration']
+            m = '\n\nin this type of file you need to choose variable to plot by!!\nchoose variable to plot by:\n' +\
+                '\n'.join(["{0:<5}{1}".format(i+1, choices[i]) for i in range(len(choices))])
+            col_choice = choices[get_input(len(choices), m)]
+            # col_choice = "Total"
+            home_dir = dir_name[:-1]
+            dir_name = home_dir + ' by {0}'.format(col_choice)
+            dir_name_files = dir_name + "/excel/"
+            os.rename(home_dir, dir_name)
+            dir_name += "/"
+            col_to_plot_by = list(data.columns)[row.index(col_choice)]
 
     data = data.loc[data.index.difference([0, 1, 2])]
     data = data.rename(columns={name_col: 'treatment', 'Unnamed: 2': 'col', 'Unnamed: 3': 'time',
                                 col_to_plot_by: 'total distance'})
     data = data.reset_index()
     treatments = data.treatment.unique()
+    treatments = ["".join([c if c.isalnum() else '_' for c in treatment_name]) for treatment_name in treatments]
     cols = data.col.unique()
     cols_letters = []
     for c in cols:
@@ -69,33 +63,38 @@ def make_df_ready(file_name, dir_name_files, dir_name):
     return results, treatment_letter, dir_name_files, dir_name
 
 
-def check_dir_n_df(file_name):
-    exist = True
-    home_dir = 'results from script'
-    if not path.exists(home_dir):
-        os.mkdir(home_dir)
-        exist = False
-    dir_name = home_dir + "/" + file_name
-    if not exist or not path.exists(dir_name):
+def create_dir(file_name, col_choice):
+    home_dir = 'results from script/'
+    if col_choice != "":
+        file_name += ' by {0}'.format(col_choice)
+    dir_name = home_dir + file_name
+    if not path.exists(dir_name):
         os.mkdir(dir_name)
         os.mkdir(dir_name + "/images")
         os.mkdir(dir_name + "/stats")
         os.mkdir(dir_name + "/excel")
-    return dir_name + '/'
+    dir_name += '/'
+    return dir_name, col_choice
 
 
-def check_file_type(file_name):
-    data = pd.read_excel(file_name, index_col=False)
-    return data, len(list(data.columns)) == 8
+def check_dir_exist(file_name):
+    home_dir = 'results from script/'
+    dir_list = [f.path for f in os.scandir(home_dir) if f.is_dir()]
+    dir_list = [d.split('/')[1] for d in dir_list]
+    choices = ['Total', 'Frequency', 'Cumulative Duration']
+    for d in dir_list:
+        if file_name in d and file_name != d:
+            m = '\nin this type of file you need to choose variable to plot by!!\nchoose variable to plot by:\n' + \
+                '\n'.join(["{0:<5}{1}".format(i + 1, choices[i]) for i in range(len(choices))])
+            col_choice = choices[get_input(len(choices), m)]
+            return col_choice
+    return ""
 
 
-def create_df(file_name, dir_name_files, dir_name):
-    data, reg_file = check_file_type(file_name)
-    print(reg_file)
-    x = 1
-    while True:
-        x += 1
-    check_dir_n_df(file_name)
+def create_df(file_name):
+    col_choice = check_dir_exist(file_name)
+    dir_name, col_choice = create_dir(file_name, col_choice)
+    dir_name_files = dir_name + "/excel/"
     pickle_name = "_treatment_letter.pk1"
     file_name_read = file_name[:len(file_name)-5]
     try:
@@ -105,9 +104,10 @@ def create_df(file_name, dir_name_files, dir_name):
         return results, treatment_letter, dir_name
     except:
         print('\n\nprocessing...')
-    results, treatment_letter, dir_name_files, new_dir_name = make_df_ready(file_name, dir_name_files, dir_name)
+    results, treatment_letter, dir_name_files, new_dir_name = make_df_ready(file_name, dir_name_files, dir_name,
+                                                                            col_choice)
     results = results[:len(results)-1]
-    print('removed the last second!!')
+    print('\nremoved the last second!!')
     file_name_write = file_name[:len(file_name)-5]
     results.to_excel(dir_name_files + file_name_write + '_df.xlsx')
     with open(dir_name_files + file_name_write + pickle_name, 'wb') as f:

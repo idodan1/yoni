@@ -1,5 +1,5 @@
 from create_data import *
-from yoni import *
+from main import *
 
 
 def create_zeros_dir():
